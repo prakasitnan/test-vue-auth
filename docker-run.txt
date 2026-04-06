@@ -1,0 +1,2 @@
+docker run -d --name test-vue-app -p 8080:80 prakasitnan/test-vue-auth:latest
+docker stop test-vue-app
