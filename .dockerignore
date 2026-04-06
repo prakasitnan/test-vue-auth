@@ -7,5 +7,4 @@ dist
 .gemini
 Jenkinsfile
 Dockerfile
-nginx.conf
 README.md
