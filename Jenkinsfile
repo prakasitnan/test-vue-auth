@@ -2,87 +2,75 @@ pipeline {
     agent any
 
     environment {
-        // Docker Hub Configuration
-        DOCKER_HUB_USER = credentials('dockerhub-username') // REPLACE WITH YOUR ACTUAL DOCKER HUB USERNAME
+        // 1. Docker Hub Configuration
+        DOCKER_HUB_USER = "prakasitnan"
         DOCKER_IMAGE = "${DOCKER_HUB_USER}/test-vue-auth"
-        REGISTRY = "docker.io"
-
-        // Securely bind Jenkins credentials
-        // Ensure this ID matches the credential you created in Jenkins for Docker Hub
-        DOCKER_AUTH = credentials('docker-hub-credentials-id')
-
-        GIT_AUTH = credentials('git-credentials-id')
+        
+        // 2. Credentials (Ensure these IDs exist in Jenkins Credential Manager)
+        // These generate _USR and _PSW variables automatically
+        DOCKER_CREDS = credentials('docker-hub-creds')
+        GIT_CREDS = credentials('git-repo-creds')
+        
         APP_VERSION = ""
     }
 
     stages {
-        stage('Checkout') {
+        stage('Initial Setup') {
             steps {
-                checkout scm
+                script {
+                    echo "Starting build for ${DOCKER_IMAGE}..."
+                    sh 'git config user.email "jenkins@example.com"'
+                    sh 'git config user.name "Jenkins CI"'
+                }
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install & Build') {
             steps {
-                sh 'npm ci'
+                sh 'npm install'
+                sh 'npm run build'
             }
         }
 
         stage('Update Version') {
             steps {
                 script {
-                    sh 'git config user.email "jenkins@example.com"'
-                    sh 'git config user.name "Jenkins CI"'
-
-                    // Increment patch version
+                    // Increment version (e.g. 1.0.0 -> 1.0.1)
                     sh 'npm version patch -m "chore: bump version to %s [skip ci]"'
-
+                    
+                    // Capture new version for tagging
                     APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
+                    echo "New Version: ${APP_VERSION}"
                 }
             }
         }
 
-        stage('Build Application') {
-            steps {
-                sh 'npm run build'
-            }
-        }
-
-        stage('Docker Build') {
+        stage('Docker Operations') {
             steps {
                 script {
-                    def fullTag = "${APP_VERSION}-${BUILD_NUMBER}"
-                    // Build using the Docker Hub format: username/repository:tag
-                    sh "docker build -t ${DOCKER_IMAGE}:${fullTag} ."
-                    sh "docker tag ${DOCKER_IMAGE}:${fullTag} ${DOCKER_IMAGE}:${APP_VERSION}"
-                    sh "docker tag ${DOCKER_IMAGE}:${fullTag} ${DOCKER_IMAGE}:latest"
-                }
-            }
-        }
-
-        stage('Push to Git') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'git-credentials-id', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                        // Replace the URL with your actual Git repository URL
-                        sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/your-repo-path.git HEAD:${GIT_BRANCH} --tags"
-                    }
-                }
-            }
-        }
-
-        stage('Docker Push') {
-            steps {
-                script {
-                    def fullTag = "${APP_VERSION}-${BUILD_NUMBER}"
-
-                    // Login to Docker Hub
-                    sh "echo ${DOCKER_AUTH_PSW} | docker login -u ${DOCKER_AUTH_USR} --password-stdin"
-
-                    // Push all tags to Docker Hub
-                    sh "docker push ${DOCKER_IMAGE}:${fullTag}"
-                    sh "docker push ${DOCKER_IMAGE}:${APP_VERSION}"
+                    def tag = "${APP_VERSION}-${BUILD_NUMBER}"
+                    
+                    // Build and Tag
+                    sh "docker build -t ${DOCKER_IMAGE}:${tag} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${tag} ${DOCKER_IMAGE}:latest"
+                    
+                    // Login and Push
+                    sh "echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin"
+                    sh "docker push ${DOCKER_IMAGE}:${tag}"
                     sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Sync Git') {
+            steps {
+                script {
+                    // Push the version update back to GitHub
+                    withCredentials([usernamePassword(credentialsId: 'git-repo-creds', passwordVariable: 'GIT_PASS', usernameVariable: 'GIT_USER')]) {
+                        // Extract repo URL and push
+                        def remote = sh(script: "git remote get-url origin", returnStdout: true).trim().replace("https://", "")
+                        sh "git push https://${GIT_USER}:${GIT_PASS}@${remote} HEAD:main --tags"
+                    }
                 }
             }
         }
@@ -90,8 +78,16 @@ pipeline {
 
     post {
         always {
-            cleanWs()
-            sh "docker logout"
+            script {
+                sh "docker logout || true"
+                cleanWs()
+            }
+        }
+        success {
+            echo "Successfully deployed version ${APP_VERSION}"
+        }
+        failure {
+            echo "Pipeline failed. Please check the logs above."
         }
     }
 }
