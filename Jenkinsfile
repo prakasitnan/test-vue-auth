@@ -2,8 +2,17 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "test-vue-auth"
-        REGISTRY = "local-registry:5000" // Replace with your actual registry
+        // Docker Hub Configuration
+        DOCKER_HUB_USER = credentials('dockerhub-username') // REPLACE WITH YOUR ACTUAL DOCKER HUB USERNAME
+        DOCKER_IMAGE = "${DOCKER_HUB_USER}/test-vue-auth"
+        REGISTRY = "docker.io"
+
+        // Securely bind Jenkins credentials
+        // Ensure this ID matches the credential you created in Jenkins for Docker Hub
+        DOCKER_AUTH = credentials('docker-hub-credentials-id')
+
+        GIT_AUTH = credentials('git-credentials-id')
+        APP_VERSION = ""
     }
 
     stages {
@@ -19,19 +28,19 @@ pipeline {
             }
         }
 
-        /* 
-        stage('Lint') {
+        stage('Update Version') {
             steps {
-                sh 'npm run lint'
-            }
-        }
+                script {
+                    sh 'git config user.email "jenkins@example.com"'
+                    sh 'git config user.name "Jenkins CI"'
 
-        stage('Test') {
-            steps {
-                sh 'npm run test'
+                    // Increment patch version
+                    sh 'npm version patch -m "chore: bump version to %s [skip ci]"'
+
+                    APP_VERSION = sh(script: "node -p \"require('./package.json').version\"", returnStdout: true).trim()
+                }
             }
         }
-        */
 
         stage('Build Application') {
             steps {
@@ -42,36 +51,47 @@ pipeline {
         stage('Docker Build') {
             steps {
                 script {
-                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
+                    def fullTag = "${APP_VERSION}-${BUILD_NUMBER}"
+                    // Build using the Docker Hub format: username/repository:tag
+                    sh "docker build -t ${DOCKER_IMAGE}:${fullTag} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${fullTag} ${DOCKER_IMAGE}:${APP_VERSION}"
+                    sh "docker tag ${DOCKER_IMAGE}:${fullTag} ${DOCKER_IMAGE}:latest"
                 }
             }
         }
 
-        /*
-        stage('Docker Push') {
+        stage('Push to Git') {
             steps {
                 script {
-                    // Requires docker.withRegistry or similar for authentication
-                    // docker.withRegistry('https://' + env.REGISTRY, 'docker-credentials-id') {
-                    //     sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    //     sh "docker push ${REGISTRY}/${DOCKER_IMAGE}:${BUILD_NUMBER}"
-                    // }
+                    withCredentials([usernamePassword(credentialsId: 'git-credentials-id', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                        // Replace the URL with your actual Git repository URL
+                        sh "git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/your-repo-path.git HEAD:${GIT_BRANCH} --tags"
+                    }
                 }
             }
         }
-        */
+
+        stage('Docker Push') {
+            steps {
+                script {
+                    def fullTag = "${APP_VERSION}-${BUILD_NUMBER}"
+
+                    // Login to Docker Hub
+                    sh "echo ${DOCKER_AUTH_PSW} | docker login -u ${DOCKER_AUTH_USR} --password-stdin"
+
+                    // Push all tags to Docker Hub
+                    sh "docker push ${DOCKER_IMAGE}:${fullTag}"
+                    sh "docker push ${DOCKER_IMAGE}:${APP_VERSION}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
     }
 
     post {
         always {
             cleanWs()
-        }
-        success {
-            echo 'CI Pipeline completed successfully!'
-        }
-        failure {
-            echo 'CI Pipeline failed.'
+            sh "docker logout"
         }
     }
 }
