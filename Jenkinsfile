@@ -69,12 +69,13 @@ pipeline {
         stage('Sync Git') {
             steps {
                 script {
-                    // Push the version update back to GitHub
+                    // Extract repo URL (e.g., github.com/prakasitnan/test-vue-auth.git)
+                    def remote = sh(script: "git remote get-url origin", returnStdout: true).trim().replace("https://", "")
+                    
+                    // Use double quotes for the command to include the 'remote' variable
+                    // Use \$ to escape environment variables so they are handled by the shell securely
                     withCredentials([usernamePassword(credentialsId: 'git-repo-creds', passwordVariable: 'GIT_PASS', usernameVariable: 'GIT_USER')]) {
-                        // Extract repo URL and push
-                        def remote = sh(script: "git remote get-url origin", returnStdout: true).trim().replace("https://", "")
-                        // Use single quotes for the command to prevent credential leaking in logs
-                        sh 'git push https://${GIT_USER}:${GIT_PASS}@${remote} HEAD:main --tags'
+                        sh "git push https://\$GIT_USER:\$GIT_PASS@${remote} HEAD:main --tags"
                     }
                 }
             }
