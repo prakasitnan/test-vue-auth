@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+dist
+.git
+.github
+.claude
+.gemini
+Jenkinsfile
+Dockerfile
+nginx.conf
+README.md
