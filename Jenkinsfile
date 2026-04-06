@@ -58,8 +58,8 @@ pipeline {
                     sh "docker build -t ${DOCKER_IMAGE}:${tag} ."
                     sh "docker tag ${DOCKER_IMAGE}:${tag} ${DOCKER_IMAGE}:latest"
                     
-                    // Login and Push
-                    sh "echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin"
+                    // Login and Push - Fixed with single quotes for security
+                    sh 'echo ${DOCKER_CREDS_PSW} | docker login -u ${DOCKER_CREDS_USR} --password-stdin'
                     sh "docker push ${DOCKER_IMAGE}:${tag}"
                     sh "docker push ${DOCKER_IMAGE}:latest"
                 }
