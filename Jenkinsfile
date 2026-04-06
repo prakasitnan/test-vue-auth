@@ -1,13 +1,17 @@
 pipeline {
     agent any
 
+    // Use the NodeJS tool defined in Jenkins Global Tool Configuration
+    tools {
+        nodejs 'node' 
+    }
+
     environment {
         // 1. Docker Hub Configuration
         DOCKER_HUB_USER = "prakasitnan"
         DOCKER_IMAGE = "${DOCKER_HUB_USER}/test-vue-auth"
         
-        // 2. Credentials (Ensure these IDs exist in Jenkins Credential Manager)
-        // These generate _USR and _PSW variables automatically
+        // 2. Credentials (IDs must match Jenkins settings)
         DOCKER_CREDS = credentials('docker-hub-creds')
         GIT_CREDS = credentials('git-repo-creds')
         
@@ -79,7 +83,8 @@ pipeline {
     post {
         always {
             script {
-                sh "docker logout || true"
+                // Ensure docker logout doesn't break the build if docker isn't installed/working
+                sh 'which docker && docker logout || echo "Docker not found or not logged in"'
                 cleanWs()
             }
         }
