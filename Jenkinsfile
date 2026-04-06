@@ -85,8 +85,16 @@ pipeline {
     post {
         always {
             script {
-                // Ensure docker logout doesn't break the build if docker isn't installed/working
+                // Logout from Docker Hub
                 sh 'which docker && docker logout || echo "Docker not found or not logged in"'
+                
+                // Cleanup local Docker images to save disk space
+                if (APP_VERSION != "") {
+                    def tag = "${APP_VERSION}-${BUILD_NUMBER}"
+                    sh "docker rmi ${DOCKER_IMAGE}:${tag} ${DOCKER_IMAGE}:${APP_VERSION} ${DOCKER_IMAGE}:latest || true"
+                }
+                
+                // Final workspace cleanup
                 cleanWs()
             }
         }
