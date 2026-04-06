@@ -73,7 +73,8 @@ pipeline {
                     withCredentials([usernamePassword(credentialsId: 'git-repo-creds', passwordVariable: 'GIT_PASS', usernameVariable: 'GIT_USER')]) {
                         // Extract repo URL and push
                         def remote = sh(script: "git remote get-url origin", returnStdout: true).trim().replace("https://", "")
-                        sh "git push https://${GIT_USER}:${GIT_PASS}@${remote} HEAD:main --tags"
+                        // Use single quotes for the command to prevent credential leaking in logs
+                        sh 'git push https://${GIT_USER}:${GIT_PASS}@${remote} HEAD:main --tags'
                     }
                 }
             }
